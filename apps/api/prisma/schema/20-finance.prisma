@@ -1,0 +1,271 @@
+// ============================================================================
+// Finance module — double-entry accounting core.
+//
+// Every financial document (payment, receipt, invoice, payroll run) ultimately
+// posts a balanced JournalEntry. Keeping one posting path means the trial
+// balance, P&L and balance sheet are derived, never separately maintained.
+// ============================================================================
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum AccountSubType {
+  CASH
+  BANK
+  RECEIVABLE
+  INVENTORY
+  OTHER_CURRENT_ASSET
+  FIXED_ASSET
+  ACCUMULATED_DEPRECIATION
+  PAYABLE
+  TAX_PAYABLE
+  OTHER_CURRENT_LIABILITY
+  LONG_TERM_LIABILITY
+  SHARE_CAPITAL
+  RETAINED_EARNINGS
+  OPERATING_INCOME
+  OTHER_INCOME
+  COST_OF_SALES
+  DIRECT_COST
+  PAYROLL_EXPENSE
+  OPERATING_EXPENSE
+  DEPRECIATION
+  OTHER_EXPENSE
+}
+
+/// Which side increases the account.
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum PeriodStatus {
+  OPEN
+  CLOSED
+}
+
+enum JournalStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+/// What produced the entry. Only MANUAL is user-authored.
+enum JournalSource {
+  MANUAL
+  PAYMENT
+  RECEIPT
+  INVOICE
+  BILL
+  PAYROLL
+  ADJUSTMENT
+  OPENING_BALANCE
+}
+
+enum TaxKind {
+  GST
+  VAT
+  SALES_TAX
+  WITHHOLDING
+}
+
+model Account {
+  id            String         @id @default(cuid())
+  code          String         @unique
+  name          String
+  type          AccountType
+  subType       AccountSubType
+  normalBalance NormalBalance
+
+  /// Group accounts are headers only — postings must target a leaf.
+  isGroup  Boolean @default(false)
+  parentId String?
+  parent   Account?  @relation("AccountTree", fields: [parentId], references: [id])
+  children Account[] @relation("AccountTree")
+
+  currencyId  String?
+  currency    Currency? @relation(fields: [currencyId], references: [id])
+  description String?
+  /// System accounts are required by posting logic and cannot be deleted.
+  isSystem    Boolean   @default(false)
+  active      Boolean   @default(true)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  lines       JournalLine[]
+  bankAccount BankAccount?
+  taxRates    TaxRate[]
+  budgetLines BudgetLine[]
+
+  @@index([type])
+  @@index([parentId])
+  @@map("account")
+}
+
+model FiscalYear {
+  id        String             @id @default(cuid())
+  name      String             @unique
+  startDate DateTime
+  endDate   DateTime
+  status    PeriodStatus       @default(OPEN)
+  periods   AccountingPeriod[]
+  budgets   Budget[]
+  createdAt DateTime           @default(now())
+
+  @@map("fiscal_year")
+}
+
+model AccountingPeriod {
+  id           String       @id @default(cuid())
+  fiscalYearId String
+  fiscalYear   FiscalYear   @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  name         String
+  startDate    DateTime
+  endDate      DateTime
+  status       PeriodStatus @default(OPEN)
+
+  entries JournalEntry[]
+
+  @@unique([fiscalYearId, name])
+  @@index([startDate, endDate])
+  @@map("accounting_period")
+}
+
+model JournalEntry {
+  id          String        @id @default(cuid())
+  entryNumber String        @unique
+  entryDate   DateTime
+  periodId    String?
+  period      AccountingPeriod? @relation(fields: [periodId], references: [id])
+
+  reference String?
+  narration String
+  source    JournalSource @default(MANUAL)
+  status    JournalStatus @default(DRAFT)
+
+  /// Denormalised control totals; the service asserts debit == credit on post.
+  totalDebit  Decimal @default(0) @db.Decimal(18, 2)
+  totalCredit Decimal @default(0) @db.Decimal(18, 2)
+
+  /// Set once the Projects module lands; kept nullable for cost tracking now.
+  projectId String?
+
+  postedAt     DateTime?
+  postedById   String?
+  reversalOfId String?       @unique
+  reversalOf   JournalEntry? @relation("JournalReversal", fields: [reversalOfId], references: [id])
+  reversedBy   JournalEntry? @relation("JournalReversal")
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  lines JournalLine[]
+
+  @@index([entryDate])
+  @@index([status])
+  @@index([projectId])
+  @@map("journal_entry")
+}
+
+model JournalLine {
+  id         String       @id @default(cuid())
+  entryId    String
+  entry      JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  lineNumber Int
+  accountId  String
+  account    Account      @relation(fields: [accountId], references: [id])
+
+  description String?
+  debit       Decimal @default(0) @db.Decimal(18, 2)
+  credit      Decimal @default(0) @db.Decimal(18, 2)
+
+  /// Optional counterparty, e.g. "Vendor"/"Customer"/"Employee" + its id.
+  partyType String?
+  partyId   String?
+  projectId String?
+
+  @@unique([entryId, lineNumber])
+  @@index([accountId])
+  @@map("journal_line")
+}
+
+model BankAccount {
+  id        String  @id @default(cuid())
+  /// The ledger account this bank account posts to (1:1).
+  accountId String  @unique
+  account   Account @relation(fields: [accountId], references: [id])
+
+  bankName     String
+  branch       String?
+  accountTitle String
+  /// AES-256-GCM encrypted at rest.
+  accountNumber String?
+  iban         String?
+  swift        String?
+  currencyId   String?
+  currency     Currency? @relation(fields: [currencyId], references: [id])
+  openingBalance Decimal @default(0) @db.Decimal(18, 2)
+  active       Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("bank_account")
+}
+
+model TaxRate {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  kind      TaxKind  @default(GST)
+  /// Percentage, e.g. 17.0000
+  rate      Decimal  @db.Decimal(9, 4)
+  /// Ledger account the tax accrues to.
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id])
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("tax_rate")
+}
+
+model Budget {
+  id           String       @id @default(cuid())
+  name         String
+  fiscalYearId String
+  fiscalYear   FiscalYear   @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  projectId    String?
+  status       PeriodStatus @default(OPEN)
+  createdById  String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  lines BudgetLine[]
+
+  @@unique([name, fiscalYearId])
+  @@map("budget")
+}
+
+model BudgetLine {
+  id        String  @id @default(cuid())
+  budgetId  String
+  budget    Budget  @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id])
+  amount    Decimal @default(0) @db.Decimal(18, 2)
+  notes     String?
+
+  @@unique([budgetId, accountId])
+  @@map("budget_line")
+}

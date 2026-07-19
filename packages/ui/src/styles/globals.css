@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Connect Affairs theme tokens.
+ * Brand primary #11479B ≈ hsl(217 80% 34%); surface #F5F8FC ≈ hsl(214 50% 97%).
+ * Values are HSL channels so Tailwind can apply opacity via hsl(var(--x) / <alpha>).
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 217 80% 34%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 214 50% 97%;
+    --secondary-foreground: 217 80% 24%;
+
+    --muted: 214 32% 95%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 214 50% 95%;
+    --accent-foreground: 217 80% 30%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 40%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 92% 12%;
+
+    --border: 214 24% 89%;
+    --input: 214 24% 89%;
+    --ring: 217 80% 34%;
+
+    --sidebar: 218 65% 14%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-accent: 213 90% 60%;
+    --sidebar-border: 218 40% 22%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 44% 11%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 44% 11%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 213 90% 60%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 20%;
+    --accent-foreground: 210 40% 96%;
+
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 60% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 38 92% 12%;
+
+    --border: 217 33% 20%;
+    --input: 217 33% 22%;
+    --ring: 213 90% 60%;
+
+    --sidebar: 222 47% 10%;
+    --sidebar-foreground: 210 40% 92%;
+    --sidebar-accent: 213 90% 60%;
+    --sidebar-border: 217 33% 18%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+}

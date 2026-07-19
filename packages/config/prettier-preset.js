@@ -1,0 +1,12 @@
+// @ca/config/prettier — shared Prettier config for all workspaces.
+/** @type {import("prettier").Config} */
+export default {
+  printWidth: 100,
+  tabWidth: 2,
+  semi: true,
+  singleQuote: false,
+  trailingComma: "all",
+  bracketSpacing: true,
+  arrowParens: "always",
+  endOfLine: "lf",
+};

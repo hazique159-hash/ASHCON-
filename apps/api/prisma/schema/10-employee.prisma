@@ -1,0 +1,326 @@
+// ============================================================================
+// Employee module — the HR personnel record.
+//
+// An Employee is the HR record; a User is the portal account. The link is an
+// optional 1:1, so site staff without a login still have a full profile.
+// ============================================================================
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNDISCLOSED
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+  UNDISCLOSED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  PROBATION
+  INTERN
+  CONSULTANT
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  RESIGNED
+  TERMINATED
+  RETIRED
+}
+
+enum BloodGroup {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+  UNKNOWN
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum DisciplinaryType {
+  VERBAL_WARNING
+  WRITTEN_WARNING
+  FINAL_WARNING
+  SUSPENSION
+  TERMINATION
+}
+
+model Employee {
+  id           String  @id @default(cuid())
+  employeeCode String  @unique
+  /// Optional portal account. Null for staff without system access.
+  userId       String? @unique
+  user         User?   @relation(fields: [userId], references: [id])
+
+  // ── Personal ──
+  firstName     String
+  lastName      String
+  fatherName    String?
+  dateOfBirth   DateTime?
+  gender        Gender?
+  maritalStatus MaritalStatus?
+  nationality   String?
+  /// National identity number (CNIC/NIC). Unique when present.
+  nationalId    String?        @unique
+  passportNo    String?
+  personalEmail String?
+  personalPhone String?
+  addressLine1  String?
+  addressLine2  String?
+  city          String?
+  state         String?
+  country       String?
+  postalCode    String?
+
+  // ── Placement ──
+  departmentId  String?
+  department    Department?  @relation(fields: [departmentId], references: [id])
+  designationId String?
+  designation   Designation? @relation(fields: [designationId], references: [id])
+  branchId      String?
+  branch        Branch?      @relation(fields: [branchId], references: [id])
+  reportsToId   String?
+  reportsTo     Employee?    @relation("EmployeeReporting", fields: [reportsToId], references: [id])
+  directReports Employee[]   @relation("EmployeeReporting")
+
+  // ── Employment ──
+  employmentType   EmploymentType @default(FULL_TIME)
+  status           EmployeeStatus @default(ACTIVE)
+  dateOfJoining    DateTime
+  probationEndDate DateTime?
+  confirmationDate DateTime?
+  exitDate         DateTime?
+
+  photoUrl     String?
+  signatureUrl String?
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  emergencyContacts EmergencyContact[]
+  education         EducationRecord[]
+  experience        ExperienceRecord[]
+  certifications    Certification[]
+  skills            EmployeeSkill[]
+  medical           MedicalInfo?
+  salary            SalaryInfo?
+  transfers         TransferRecord[]
+  disciplinary      DisciplinaryAction[]
+  exitRecord        ExitRecord?
+
+  // HR Operations module
+  leaveBalances LeaveBalance[]
+  leaveRequests LeaveRequest[]
+  attendance    AttendanceRecord[]
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([branchId])
+  @@index([reportsToId])
+  @@index([status])
+  @@index([lastName, firstName])
+  @@map("employee")
+}
+
+model EmergencyContact {
+  id           String   @id @default(cuid())
+  employeeId   String
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  name         String
+  relationship String
+  phone        String
+  altPhone     String?
+  address      String?
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([employeeId])
+  @@map("emergency_contact")
+}
+
+model EducationRecord {
+  id            String    @id @default(cuid())
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  institution   String
+  degree        String
+  fieldOfStudy  String?
+  startYear     Int?
+  endYear       Int?
+  grade         String?
+  attachmentId  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([employeeId])
+  @@map("education_record")
+}
+
+model ExperienceRecord {
+  id           String    @id @default(cuid())
+  employeeId   String
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company      String
+  jobTitle     String
+  location     String?
+  startDate    DateTime
+  endDate      DateTime?
+  isCurrent    Boolean   @default(false)
+  description  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([employeeId])
+  @@map("experience_record")
+}
+
+model Certification {
+  id            String    @id @default(cuid())
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  name          String
+  issuingBody   String?
+  credentialId  String?
+  issuedOn      DateTime?
+  /// Drives the expiry reminder engine.
+  expiresOn     DateTime?
+  attachmentId  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([employeeId])
+  @@index([expiresOn])
+  @@map("certification")
+}
+
+model EmployeeSkill {
+  id         String     @id @default(cuid())
+  employeeId String
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  name       String
+  level      SkillLevel @default(INTERMEDIATE)
+  years      Int?
+  createdAt  DateTime   @default(now())
+
+  @@unique([employeeId, name])
+  @@map("employee_skill")
+}
+
+/// Sensitive. Readable only with employee:view plus the medical permission gate.
+model MedicalInfo {
+  id                String      @id @default(cuid())
+  employeeId        String      @unique
+  employee          Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  bloodGroup        BloodGroup  @default(UNKNOWN)
+  allergies         String?
+  chronicConditions String?
+  medications       String?
+  insuranceProvider String?
+  insuranceNumber   String?
+  lastCheckupOn     DateTime?
+  notes             String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@map("medical_info")
+}
+
+/// Sensitive. Amounts stay numeric so payroll can compute on them; access is
+/// gated by RBAC rather than field encryption. Bank account number is encrypted
+/// at the service layer before storage.
+model SalaryInfo {
+  id                String   @id @default(cuid())
+  employeeId        String   @unique
+  employee          Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  basicSalary       Decimal  @default(0) @db.Decimal(18, 2)
+  houseAllowance    Decimal  @default(0) @db.Decimal(18, 2)
+  transportAllowance Decimal @default(0) @db.Decimal(18, 2)
+  otherAllowance    Decimal  @default(0) @db.Decimal(18, 2)
+  currencyId        String?
+  bankName          String?
+  bankBranch        String?
+  /// AES-GCM encrypted at rest.
+  bankAccountNumber String?
+  taxNumber         String?
+  effectiveFrom     DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("salary_info")
+}
+
+model TransferRecord {
+  id             String   @id @default(cuid())
+  employeeId     String
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  fromDepartment String?
+  toDepartment   String?
+  fromBranch     String?
+  toBranch       String?
+  fromDesignation String?
+  toDesignation  String?
+  effectiveDate  DateTime
+  reason         String?
+  approvedById   String?
+  createdAt      DateTime @default(now())
+
+  @@index([employeeId])
+  @@map("transfer_record")
+}
+
+model DisciplinaryAction {
+  id          String           @id @default(cuid())
+  employeeId  String
+  employee    Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type        DisciplinaryType
+  subject     String
+  details     String?
+  issuedOn    DateTime
+  issuedById  String?
+  acknowledged Boolean         @default(false)
+  createdAt   DateTime         @default(now())
+
+  @@index([employeeId])
+  @@map("disciplinary_action")
+}
+
+model ExitRecord {
+  id                String    @id @default(cuid())
+  employeeId        String    @unique
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  resignationDate   DateTime?
+  lastWorkingDay    DateTime?
+  reason            String?
+  noticePeriodDays  Int?
+  clearanceComplete Boolean   @default(false)
+  exitInterviewNote String?
+  rehireEligible    Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("exit_record")
+}

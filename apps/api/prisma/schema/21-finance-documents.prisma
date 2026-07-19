@@ -1,0 +1,152 @@
+// ============================================================================
+// Finance documents — parties, invoices/bills and settlements.
+//
+// Documents never hold balances of their own: issuing or settling one posts a
+// balanced JournalEntry, so the ledger stays the single source of truth.
+// ============================================================================
+
+enum PartyKind {
+  CUSTOMER
+  VENDOR
+  BOTH
+}
+
+/// SALES raises a receivable; PURCHASE raises a payable.
+enum InvoiceKind {
+  SALES
+  PURCHASE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentDirection {
+  RECEIPT
+  PAYMENT
+}
+
+model Party {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  name      String
+  kind      PartyKind @default(CUSTOMER)
+  taxNumber String?
+  email     String?
+  phone     String?
+  address   String?
+  active    Boolean   @default(true)
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  invoices Invoice[]
+  payments Payment[]
+
+  @@index([kind])
+  @@map("party")
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  kind          InvoiceKind
+  partyId       String
+  party         Party         @relation(fields: [partyId], references: [id])
+
+  issueDate DateTime
+  dueDate   DateTime?
+  reference String?
+  narration String?
+  projectId String?
+
+  subtotal   Decimal @default(0) @db.Decimal(18, 2)
+  taxTotal   Decimal @default(0) @db.Decimal(18, 2)
+  total      Decimal @default(0) @db.Decimal(18, 2)
+  amountPaid Decimal @default(0) @db.Decimal(18, 2)
+
+  status InvoiceStatus @default(DRAFT)
+
+  /// The journal entry raised when the document was issued.
+  journalEntryId String? @unique
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  lines       InvoiceLine[]
+  allocations PaymentAllocation[]
+
+  @@index([partyId])
+  @@index([status])
+  @@index([issueDate])
+  @@map("invoice")
+}
+
+model InvoiceLine {
+  id         String  @id @default(cuid())
+  invoiceId  String
+  invoice    Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  lineNumber Int
+
+  description String
+  quantity    Decimal @default(1) @db.Decimal(14, 3)
+  unitPrice   Decimal @default(0) @db.Decimal(18, 2)
+  /// Revenue account for sales, expense/asset account for purchases.
+  accountId   String
+  account     Account @relation(fields: [accountId], references: [id])
+  taxRateId   String?
+  taxRate     TaxRate? @relation(fields: [taxRateId], references: [id])
+  taxAmount   Decimal @default(0) @db.Decimal(18, 2)
+  lineTotal   Decimal @default(0) @db.Decimal(18, 2)
+
+  @@unique([invoiceId, lineNumber])
+  @@index([accountId])
+  @@map("invoice_line")
+}
+
+model Payment {
+  id            String           @id @default(cuid())
+  paymentNumber String           @unique
+  direction     PaymentDirection
+  partyId       String
+  party         Party            @relation(fields: [partyId], references: [id])
+
+  paymentDate DateTime
+  /// Cash/bank ledger account the money moved through.
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id])
+  amount      Decimal  @db.Decimal(18, 2)
+  reference   String?
+  notes       String?
+
+  journalEntryId String? @unique
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  allocations PaymentAllocation[]
+
+  @@index([partyId])
+  @@index([paymentDate])
+  @@map("payment")
+}
+
+model PaymentAllocation {
+  id        String  @id @default(cuid())
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  amount    Decimal @db.Decimal(18, 2)
+
+  @@unique([paymentId, invoiceId])
+  @@index([invoiceId])
+  @@map("payment_allocation")
+}

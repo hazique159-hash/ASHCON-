@@ -1,0 +1,145 @@
+// ============================================================================
+// HR Operations — attendance, leave and the holiday calendar.
+//
+// Leave day-counts are derived from the holiday calendar and the weekend
+// configuration, never entered by hand, so entitlement can't be gamed.
+// ============================================================================
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+  HOLIDAY
+  WEEKEND
+  REMOTE
+}
+
+enum AttendanceSource {
+  MANUAL
+  SELF_SERVICE
+  BIOMETRIC
+  IMPORT
+}
+
+enum LeaveRequestStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model Holiday {
+  id          String   @id @default(cuid())
+  name        String
+  date        DateTime
+  /// Recurring holidays repeat on the same calendar date each year.
+  isRecurring Boolean  @default(false)
+  description String?
+  branchId    String?
+  branch      Branch?  @relation(fields: [branchId], references: [id])
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([date, name])
+  @@index([date])
+  @@map("holiday")
+}
+
+model LeaveType {
+  id               String  @id @default(cuid())
+  code             String  @unique
+  name             String
+  /// Annual entitlement in days.
+  daysPerYear      Decimal @default(0) @db.Decimal(6, 2)
+  isPaid           Boolean @default(true)
+  carryForward     Boolean @default(false)
+  maxCarryForward  Decimal @default(0) @db.Decimal(6, 2)
+  requiresApproval Boolean @default(true)
+  /// Chip colour in the calendar UI.
+  colour           String?
+  active           Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requests LeaveRequest[]
+  balances LeaveBalance[]
+
+  @@map("leave_type")
+}
+
+model LeaveBalance {
+  id          String   @id @default(cuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  /// Calendar year the balance applies to.
+  year        Int
+  entitled    Decimal  @default(0) @db.Decimal(6, 2)
+  carried     Decimal  @default(0) @db.Decimal(6, 2)
+  taken       Decimal  @default(0) @db.Decimal(6, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([year])
+  @@map("leave_balance")
+}
+
+model LeaveRequest {
+  id            String             @id @default(cuid())
+  requestNumber String             @unique
+  employeeId    String
+  employee      Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId   String
+  leaveType     LeaveType          @relation(fields: [leaveTypeId], references: [id])
+
+  startDate DateTime
+  endDate   DateTime
+  /// Working days, computed server-side from the holiday calendar.
+  days      Decimal            @db.Decimal(6, 2)
+  isHalfDay Boolean            @default(false)
+  reason    String
+  status    LeaveRequestStatus @default(PENDING)
+
+  approverId   String?
+  decidedAt    DateTime?
+  decisionNote String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([employeeId, status])
+  @@index([startDate, endDate])
+  @@map("leave_request")
+}
+
+model AttendanceRecord {
+  id         String           @id @default(cuid())
+  employeeId String
+  employee   Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date       DateTime
+  status     AttendanceStatus @default(PRESENT)
+  checkIn    DateTime?
+  checkOut   DateTime?
+  workedHours   Decimal?      @db.Decimal(6, 2)
+  overtimeHours Decimal?      @db.Decimal(6, 2)
+  notes      String?
+  source     AttendanceSource @default(MANUAL)
+  markedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// One record per employee per day.
+  @@unique([employeeId, date])
+  @@index([date])
+  @@index([status])
+  @@map("attendance_record")
+}
